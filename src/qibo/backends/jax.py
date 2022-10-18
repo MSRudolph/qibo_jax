@@ -10,37 +10,46 @@ from qibo.gates import FusedGate
 from qibo.gates.abstract import ParametrizedGate, SpecialGate
 from qibo.states import CircuitResult
 
+import jax
 import numpy as np
+from jax import numpy as jnp
+from jax.config import config
+
+config.update("jax_enable_x64", True)
 
 
-class NumpyBackend(Backend):
+class JaxBackend(Backend):
     def __init__(self):
         super().__init__()
-        self.np = np
-        self.name = "numpy"
-        self.matrices = Matrices(self.dtype)
+        self.np = jnp
+        self.name = "jax"
+        self.matrices = Matrices(self.dtype, self.np)
         self.tensor_types = np.ndarray
-        self.versions = {"qibo": __version__, "numpy": self.np.__version__}
+        self.versions = {
+            "qibo": __version__,
+            "numpy": np.__version__,
+            "jax": jax.__version__,
+        }
         self.numeric_types = (
             int,
             float,
             complex,
-            np.int32,
-            np.int64,
-            np.float32,
-            np.float64,
-            np.complex64,
-            np.complex128,
+            jnp.int32,
+            jnp.int64,
+            jnp.float32,
+            jnp.float64,
+            jnp.complex64,
+            jnp.complex128,
         )
 
     def set_precision(self, precision):
         if precision != self.precision:
             if precision == "single":
                 self.precision = precision
-                self.dtype = "complex64"
+                self.dtype = jnp.complex64  # "complex64"
             elif precision == "double":
                 self.precision = precision
-                self.dtype = "complex128"
+                self.dtype = jnp.complex128  # "complex128"
             else:
                 raise_error(ValueError, f"Unknown precision {precision}.")
             if self.matrices:
@@ -63,7 +72,7 @@ class NumpyBackend(Backend):
             return x.astype(dtype, copy=copy)
         elif self.issparse(x):
             return x.astype(dtype, copy=copy)
-        return np.array(x, dtype=dtype, copy=copy)
+        return self.np.array(x, dtype=dtype, copy=copy)
 
     def issparse(self, x):
         from scipy import sparse
@@ -72,20 +81,20 @@ class NumpyBackend(Backend):
 
     def to_numpy(self, x):
         if self.issparse(x):
-            return x.toarray()
-        return x
+            return np.asarray(x.toarray())
+        return np.asarray(x)
 
     def compile(self, func):
         return func
 
     def zero_state(self, nqubits):
         state = self.np.zeros(2**nqubits, dtype=self.dtype)
-        state[0] = 1
+        state = state.at[0].set(1)
         return state
 
     def zero_density_matrix(self, nqubits):
         state = self.np.zeros(2 * (2**nqubits,), dtype=self.dtype)
-        state[0, 0] = 1
+        state = state.at[0, 0].set(1)
         return state
 
     def plus_state(self, nqubits):
@@ -110,26 +119,26 @@ class NumpyBackend(Backend):
 
     def asmatrix_fused(self, fgate):
         rank = len(fgate.target_qubits)
-        matrix = np.eye(2**rank, dtype=self.dtype)
+        matrix = self.np.eye(2**rank, dtype=self.dtype)
         for gate in fgate.gates:
             # transfer gate matrix to numpy as it is more efficient for
             # small tensor calculations
             gmatrix = gate.asmatrix(self)
             # Kronecker product with identity is needed to make the
             # original matrix have shape (2**rank x 2**rank)
-            eye = np.eye(2 ** (rank - len(gate.qubits)), dtype=self.dtype)
-            gmatrix = np.kron(gmatrix, eye)
+            eye = self.np.eye(2 ** (rank - len(gate.qubits)), dtype=self.dtype)
+            gmatrix = self.np.kron(gmatrix, eye)
             # Transpose the new matrix indices so that it targets the
             # target qubits of the original gate
             original_shape = gmatrix.shape
-            gmatrix = np.reshape(gmatrix, 2 * rank * (2,))
+            gmatrix = self.np.reshape(gmatrix, 2 * rank * (2,))
             qubits = list(gate.qubits)
             indices = qubits + [q for q in fgate.target_qubits if q not in qubits]
             indices = np.argsort(indices)
             transpose_indices = list(indices)
             transpose_indices.extend(indices + rank)
-            gmatrix = np.transpose(gmatrix, transpose_indices)
-            gmatrix = np.reshape(gmatrix, original_shape)
+            gmatrix = self.np.transpose(gmatrix, transpose_indices)
+            gmatrix = self.np.reshape(gmatrix, original_shape)
             # fuse the individual gate matrix to the total ``FusedGate`` matrix
             matrix = gmatrix @ matrix
         return matrix
@@ -518,9 +527,11 @@ class NumpyBackend(Backend):
         self.np.random.seed(seed)
 
     def sample_shots(self, probabilities, nshots):
-        return self.np.random.choice(
-            range(len(probabilities)), size=nshots, p=probabilities
-        )
+        # for numerical instabilities using jax
+        probabilities = np.asarray(probabilities, dtype="float64")
+        probabilities = probabilities / np.sum(probabilities)
+        print(np.sum(probabilities))
+        return np.random.choice(range(len(probabilities)), size=nshots, p=probabilities)
 
     def aggregate_shots(self, shots):
         return self.np.array(shots, dtype=shots[0].dtype)
@@ -621,7 +632,7 @@ class NumpyBackend(Backend):
                 "sparse modules do not provide ``eigvals`` method."
             )
             return self.calculate_eigenvectors(matrix, k=k)[0]
-        return np.linalg.eigvalsh(matrix)
+        return self.np.linalg.eigvalsh(matrix)
 
     def calculate_eigenvectors(self, matrix, k=6):
         if self.issparse(matrix):
@@ -631,7 +642,7 @@ class NumpyBackend(Backend):
                 return eigsh(matrix, k=k, which="SA")
             else:  # pragma: no cover
                 matrix = self.to_numpy(matrix)
-        return np.linalg.eigh(matrix)
+        return self.np.linalg.eigh(matrix)
 
     def calculate_matrix_exp(self, a, matrix, eigenvectors=None, eigenvalues=None):
         if eigenvectors is None or self.issparse(matrix):

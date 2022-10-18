@@ -35,6 +35,12 @@ def construct_backend(backend, platform=None, runcard=None):
 
         return QibolabBackend(platform, runcard)
 
+    # NOTE: Experimental
+    elif backend == "jax":
+        from .jax import JaxBackend
+
+        return JaxBackend()
+
     else:  # pragma: no cover
         raise_error(ValueError, f"Backend {backend} is not available.")
 
@@ -49,6 +55,7 @@ class GlobalBackend(NumpyBackend):
         {"backend": "qibojit", "platform": "numba"},
         {"backend": "tensorflow"},
         {"backend": "numpy"},
+        {"backend": "jax"},
     ]
 
     def __new__(cls):
@@ -82,6 +89,7 @@ class GlobalBackend(NumpyBackend):
             or cls._instance.name != backend
             or cls._instance.platform != platform
         ):
+            print("Constructing Backend with backend", backend)
             cls._instance = construct_backend(backend, platform, runcard)
         log.info(f"Using {cls._instance} backend on {cls._instance.device}")
 

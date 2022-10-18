@@ -17,14 +17,16 @@ else:  # pragma: no cover
         return wrapper
 
 
+import numpy as np
+
+
 class Matrices:
     """Matrix representation of every gate as a numpy array."""
 
-    def __init__(self, dtype):
-        import numpy as np
+    def __init__(self, dtype, numpy=np):
 
         self.dtype = dtype
-        self.np = np
+        self.np = numpy
 
     @cached_property
     def H(self):
