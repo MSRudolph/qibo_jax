@@ -3,10 +3,10 @@ import collections
 from typing import Dict, List, Tuple, Union
 
 import numpy as np
-
 from qibo import gates
 from qibo import gates as gate_module
 from qibo.config import raise_error
+from sympy import groebner
 
 NoiseMapType = Union[Tuple[int, int, int], Dict[int, Tuple[int, int, int]]]
 
@@ -315,11 +315,21 @@ class Circuit:
         """
         # original qubits that are in the light cone
         qubits = set(qubits)
+        if len(qubits) > 1:
+            grow_lightcone = False
+        else:
+            grow_lightcone = True
         # original gates that are in the light cone
         gates = []
         for gate in reversed(self.queue):
             gate_qubits = set(gate.qubits)
-            if gate_qubits & qubits:
+
+            if grow_lightcone:
+                condition = gate_qubits & qubits
+            else:
+                condition = all(g in qubits for g in gate_qubits)
+
+            if condition:
                 # if the gate involves any qubit included in the
                 # light cone, add all its qubits in the light cone
                 qubits |= gate_qubits

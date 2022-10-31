@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import collections
+from functools import partial
 
 from qibo import __version__
 from qibo.backends import einsum_utils
@@ -186,9 +187,10 @@ class JaxBackend(Backend):
             # Put qubit indices back to their proper places
             state = self.np.transpose(state, einsum_utils.reverse_order(order))
         else:
+            # state = jitted_apply_gate(gate, state)
             matrix = self.np.reshape(matrix, 2 * len(gate.qubits) * (2,))
             opstring = einsum_utils.apply_gate_string(gate.qubits, nqubits)
-            state = self.np.einsum(opstring, state, matrix)
+            state = jitted_einsum(opstring, state, matrix)
         return self.np.reshape(state, (2**nqubits,))
 
     def apply_gate_density_matrix(self, gate, state, nqubits):
@@ -530,7 +532,6 @@ class JaxBackend(Backend):
         # for numerical instabilities using jax
         probabilities = np.asarray(probabilities, dtype="float64")
         probabilities = probabilities / np.sum(probabilities)
-        print(np.sum(probabilities))
         return np.random.choice(range(len(probabilities)), size=nshots, p=probabilities)
 
     def aggregate_shots(self, shots):
@@ -711,3 +712,8 @@ class JaxBackend(Backend):
                 {5: 18, 4: 5, 7: 4, 1: 2, 6: 1},
                 {4: 8, 2: 6, 5: 5, 1: 3, 3: 3, 6: 2, 7: 2, 0: 1},
             ]
+
+
+@partial(jax.jit, static_argnums=(0,))
+def jitted_einsum(opstring, state, matrix):
+    return jnp.einsum(opstring, state, matrix)
