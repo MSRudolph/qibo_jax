@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import collections
+from functools import partial
 
 from qibo import __version__
 from qibo.backends import einsum_utils
@@ -9,6 +10,13 @@ from qibo.config import log, raise_error
 from qibo.gates import FusedGate
 from qibo.gates.abstract import ParametrizedGate, SpecialGate
 from qibo.states import CircuitResult
+
+import jax
+import numpy as np
+from jax import numpy as jnp
+from jax.config import config
+
+config.update("jax_enable_x64", True)
 
 import numpy as np
 
@@ -156,10 +164,12 @@ class NumpyBackend(Backend):
         return self.np.concatenate([part1, part2], axis=1)
 
     def apply_gate(self, gate, state, nqubits):
-        state = self.cast(state)
-        state = self.np.reshape(state, nqubits * (2,))
+        # state = self.cast(state)  # THIS MIGHT BREAK STUFF LATER ON
         matrix = gate.asmatrix(self)
+
         if gate.is_controlled_by:
+            state = self.np.reshape(state, nqubits * (2,))
+            print("APPLYING CONTROLLED GATE. NOT OPTIMIZED")
             matrix = self.np.reshape(matrix, 2 * len(gate.target_qubits) * (2,))
             ncontrol = len(gate.control_qubits)
             nactive = nqubits - ncontrol
@@ -176,11 +186,16 @@ class NumpyBackend(Backend):
             state = self.np.reshape(state, nqubits * (2,))
             # Put qubit indices back to their proper places
             state = self.np.transpose(state, einsum_utils.reverse_order(order))
+            # state = self.np.reshape(state, (2**nqubits,))
         else:
-            matrix = self.np.reshape(matrix, 2 * len(gate.qubits) * (2,))
-            opstring = einsum_utils.apply_gate_string(gate.qubits, nqubits)
-            state = self.np.einsum(opstring, state, matrix)
-        return self.np.reshape(state, (2**nqubits,))
+            # matrix = self.np.reshape(matrix, 2 * len(gate.qubits) * (2,))
+            # opstring = einsum_utils.apply_gate_string(gate.qubits, nqubits)
+            # state = self.np.einsum(opstring, state, matrix)
+            # state = jitted_einsum(opstring, state, matrix)
+
+            state = jitted_apply_gate(state, matrix, nqubits, gate.qubits)
+
+        return state  # self.np.reshape(state, (2**nqubits,))
 
     def apply_gate_density_matrix(self, gate, state, nqubits):
         state = self.cast(state)
@@ -358,12 +373,16 @@ class NumpyBackend(Backend):
             else:
                 if initial_state is None:
                     state = self.zero_state(nqubits)
+                    state = self.np.reshape(state, nqubits * (2,))
                 else:
                     # cast to proper complex type
                     state = self.cast(initial_state)
+                    state = self.np.reshape(state, nqubits * (2,))
 
                 for gate in circuit.queue:
                     state = gate.apply(self, state, nqubits)
+                state = np.array(state)
+                state = self.np.reshape(state, (2**nqubits,))
 
             if return_array:
                 return state
@@ -519,7 +538,7 @@ class NumpyBackend(Backend):
 
     def sample_shots(self, probabilities, nshots):
         return self.np.random.choice(
-            range(len(probabilities)), size=nshots, p=probabilities
+            self.np.arange(len(probabilities)), size=nshots, p=probabilities
         )
 
     def aggregate_shots(self, shots):
@@ -700,3 +719,18 @@ class NumpyBackend(Backend):
                 {5: 18, 4: 5, 7: 4, 1: 2, 6: 1},
                 {4: 8, 2: 6, 5: 5, 1: 3, 3: 3, 6: 2, 7: 2, 0: 1},
             ]
+
+
+@partial(jax.jit, static_argnums=(0,))
+def jitted_einsum(opstring, state, matrix):
+    return jnp.einsum(opstring, state, matrix)
+
+
+@partial(jax.jit, static_argnums=(2, 3))
+def jitted_apply_gate(state, matrix, nqubits, involved_qubits):
+
+    matrix = jnp.reshape(matrix, 2 * len(involved_qubits) * (2,))
+    opstring = einsum_utils.apply_gate_string(involved_qubits, nqubits)
+    state = jitted_einsum(opstring, state, matrix)
+
+    return state

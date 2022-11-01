@@ -17,7 +17,12 @@ else:  # pragma: no cover
         return wrapper
 
 
+import jax
 import numpy as np
+from jax import numpy as jnp
+from jax.config import config
+
+config.update("jax_enable_x64", True)
 
 
 class Matrices:
@@ -191,42 +196,45 @@ class Matrices:
         )
 
     def RXX(self, theta):
-        cos = self.np.cos(theta / 2.0) + 0j
-        isin = -1j * self.np.sin(theta / 2.0)
-        return self.np.array(
-            [
-                [cos, 0, 0, isin],
-                [0, cos, isin, 0],
-                [0, isin, cos, 0],
-                [isin, 0, 0, cos],
-            ],
-            dtype=self.dtype,
-        )
+        # cos = self.np.cos(theta / 2.0) + 0j
+        # isin = -1j * self.np.sin(theta / 2.0)
+        # return self.np.array(
+        #     [
+        #         [cos, 0, 0, isin],
+        #         [0, cos, isin, 0],
+        #         [0, isin, cos, 0],
+        #         [isin, 0, 0, cos],
+        #     ],
+        #     dtype=self.dtype,
+        # )
+        return self.np.array(jitted_RXX(theta), dtype=self.dtype)
 
     def RYY(self, theta):
-        cos = self.np.cos(theta / 2.0) + 0j
-        isin = -1j * self.np.sin(theta / 2.0)
-        return self.np.array(
-            [
-                [cos, 0, 0, -isin],
-                [0, cos, isin, 0],
-                [0, isin, cos, 0],
-                [-isin, 0, 0, cos],
-            ],
-            dtype=self.dtype,
-        )
+        # cos = self.np.cos(theta / 2.0) + 0j
+        # isin = -1j * self.np.sin(theta / 2.0)
+        # return self.np.array(
+        #     [
+        #         [cos, 0, 0, -isin],
+        #         [0, cos, isin, 0],
+        #         [0, isin, cos, 0],
+        #         [-isin, 0, 0, cos],
+        #     ],
+        #     dtype=self.dtype,
+        # )
+        return self.np.array(jitted_RYY(theta), dtype=self.dtype)
 
     def RZZ(self, theta):
-        phase = self.np.exp(0.5j * theta)
-        return self.np.array(
-            [
-                [self.np.conj(phase), 0, 0, 0],
-                [0, phase, 0, 0],
-                [0, 0, phase, 0],
-                [0, 0, 0, self.np.conj(phase)],
-            ],
-            dtype=self.dtype,
-        )
+        # phase = self.np.exp(0.5j * theta)
+        # return self.np.array(
+        #     [
+        #         [self.np.conj(phase), 0, 0, 0],
+        #         [0, phase, 0, 0],
+        #         [0, 0, phase, 0],
+        #         [0, 0, 0, self.np.conj(phase)],
+        #     ],
+        #     dtype=self.dtype,
+        # )
+        return self.np.array(jitted_RZZ(theta), dtype=self.dtype)
 
     @cached_property
     def TOFFOLI(self):
@@ -266,3 +274,44 @@ class Matrices:
 
     def FusedGate(self):  # pragma: no cover
         raise_error(NotImplementedError)
+
+
+@jax.jit
+def jitted_RXX(theta):
+    cos = jnp.cos(theta / 2.0) + 0j
+    isin = -1j * jnp.sin(theta / 2.0)
+    return jnp.array(
+        [
+            [cos, 0, 0, isin],
+            [0, cos, isin, 0],
+            [0, isin, cos, 0],
+            [isin, 0, 0, cos],
+        ],
+    )
+
+
+@jax.jit
+def jitted_RYY(theta):
+    cos = jnp.cos(theta / 2.0) + 0j
+    isin = -1j * jnp.sin(theta / 2.0)
+    return jnp.array(
+        [
+            [cos, 0, 0, -isin],
+            [0, cos, isin, 0],
+            [0, isin, cos, 0],
+            [-isin, 0, 0, cos],
+        ],
+    )
+
+
+@jax.jit
+def jitted_RZZ(theta):
+    phase = jnp.exp(0.5j * theta)
+    return jnp.array(
+        [
+            [jnp.conj(phase), 0, 0, 0],
+            [0, phase, 0, 0],
+            [0, 0, phase, 0],
+            [0, 0, 0, jnp.conj(phase)],
+        ],
+    )
