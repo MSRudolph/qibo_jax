@@ -721,12 +721,12 @@ class NumpyBackend(Backend):
             ]
 
 
-@partial(jax.jit, static_argnums=(0,))
+@partial(jax.jit, static_argnums=(0,), backend="cpu")
 def jitted_einsum(opstring, state, matrix):
     return jnp.einsum(opstring, state, matrix)
 
 
-@partial(jax.jit, static_argnums=(2, 3))
+@partial(jax.jit, static_argnums=(2, 3), backend="cpu")
 def jitted_apply_gate(state, matrix, nqubits, involved_qubits):
 
     matrix = jnp.reshape(matrix, 2 * len(involved_qubits) * (2,))

@@ -22,6 +22,7 @@ config.update("jax_enable_x64", True)
 class JaxBackend(Backend):
     def __init__(self):
         super().__init__()
+        self.device = jax.default_backend()
         self.np = jnp
         self.name = "jax"
         self.matrices = Matrices(self.dtype, self.np)
@@ -57,10 +58,12 @@ class JaxBackend(Backend):
                 self.matrices = self.matrices.__class__(self.dtype)
 
     def set_device(self, device):
-        if device != "/CPU:0":
+        if device not in ["cpu", "gpu"]:
             raise_error(
                 ValueError, f"Device {device} is not available for {self} backend."
             )
+        else:
+            jax.config.update('jax_platform_name', device)
 
     def set_threads(self, nthreads):
         if nthreads > 1:
